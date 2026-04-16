@@ -23,39 +23,33 @@
 <body>
 
 <header>
-    <div class="logo">PRISM AI</div>
+    <div class="logo">PrismAI 4o Neon</div>
 </header>
 
 <div id="chat-window">
-    <div class="msg ai">PrismAI.</div>
+    <div class="msg ai">PrismAI:hello, how can i help you</div>
 </div>
 
 <div class="input-area">
     <div style="flex-grow: 1;">
-        <div id="status" class="loading">Saturating prompts... (3-step verification active)</div>
+        <div id="status" class="loading">Thinking...</div>
         <input type="text" id="userInput" placeholder="Ask or paste code..." autocomplete="off">
     </div>
     <button id="sendBtn">SEND</button>
 </div>
 
 <script>
-    const CONFIG = {
-        API_KEY: "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", // <--- INSERT KEY HERE
-        MODEL: "meta-llama/llama-3.1-70b-instruct",
-        // This Proxy fixes the CORS error you encountered
-        ENDPOINT: "https://corsproxy.io"
-    };
-
-    async function callAI(prompt) {
+    async function callInternalChat(prompt) {
         try {
-            const resp = await fetch(CONFIG.ENDPOINT, {
+            // Calls your Cloudflare Function directly
+            const resp = await fetch("/chat", {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${CONFIG.API_KEY}` },
-                body: JSON.stringify({ model: CONFIG.MODEL, messages: [{ role: "user", content: prompt }] })
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: prompt })
             });
             const data = await resp.json();
             return data.choices[0].message.content;
-        } catch (e) { return "Error contacting API. Check Key/CORS."; }
+        } catch (e) { return "Error: Function not found."; }
     }
 
     function append(text, role, isCode = false) {
@@ -74,32 +68,30 @@
         append(val, 'user');
         input.value = '';
         
-        // Detection for code/debug tasks
         const isCode = /code|fix|debug|function|{/i.test(val);
         document.getElementById('sendBtn').disabled = true;
 
         if (isCode) {
             document.getElementById('status').style.display = 'block';
             
-            // 2 parallel prompts for "Smart" comparison
+            // Parallel diagnostic prompts via internal function
             const [a, b] = await Promise.all([
-                callAI(`Provide a solution for: ${val}`),
-                callAI(`Provide an optimized, secure alternative for: ${val}`)
+                callInternalChat(`Provide a solution for: ${val}`),
+                callInternalChat(`Provide an optimized, secure alternative for: ${val}`)
             ]);
 
-            // Final Surgical Synthesis
-            const final = await callAI(`
-                Compare these solutions for accuracy:
+            // Surgical Synthesis
+            const final = await callInternalChat(`
+                Task: ${val}
                 A: ${a}
                 B: ${b}
-                Target Task: ${val}
-                Output ONLY a surgical SEARCH/REPLACE block.
+                Compare these. Output ONLY a surgical SEARCH/REPLACE block.
             `);
 
             document.getElementById('status').style.display = 'none';
             append(final, 'ai', true);
         } else {
-            const r = await callAI(val);
+            const r = await callInternalChat(val);
             append(r, 'ai');
         }
         document.getElementById('sendBtn').disabled = false;
