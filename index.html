@@ -27,29 +27,37 @@
 </header>
 
 <div id="chat-window">
-    <div class="msg ai">PrismAI:hello, how can i help you</div>
+    <div class="msg ai">PrismAI: hello, how can i help you</div>
 </div>
 
 <div class="input-area">
     <div style="flex-grow: 1;">
         <div id="status" class="loading">Thinking...</div>
-        <input type="text" id="userInput" placeholder="Ask or paste code..." autocomplete="off">
+        <input type="text" id="userInput" placeholder="Is chimpanzini bananini a zuchini?" autocomplete="off">
     </div>
-    <button id="sendBtn">SEND</button>
+    <button id="sendBtn">send</button>
 </div>
 
 <script>
     async function callInternalChat(prompt) {
         try {
-            // Calls your Cloudflare Function directly
             const resp = await fetch("/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ prompt: prompt })
             });
             const data = await resp.json();
-            return data.choices[0].message.content;
-        } catch (e) { return "Error: Function not found."; }
+            
+            // Fixed the data path to match OpenRouter's structure
+            if (data.choices && data.choices.length > 0) {
+                return data.choices[0].message.content;
+            } else if (data.error) {
+                return "AI Error: " + data.error.message;
+            }
+            return "Error: Unexpected response format.";
+        } catch (e) { 
+            return "Error: Could not reach the server function."; 
+        }
     }
 
     function append(text, role, isCode = false) {
@@ -69,18 +77,20 @@
         input.value = '';
         
         const isCode = /code|fix|debug|function|{/i.test(val);
-        document.getElementById('sendBtn').disabled = true;
+        const sendBtn = document.getElementById('sendBtn');
+        const status = document.getElementById('status');
+        
+        sendBtn.disabled = true;
 
         if (isCode) {
-            document.getElementById('status').style.display = 'block';
+            status.style.display = 'block';
             
-            // Parallel diagnostic prompts via internal function
+            // The 3-prompt "Prism" logic
             const [a, b] = await Promise.all([
                 callInternalChat(`Provide a solution for: ${val}`),
                 callInternalChat(`Provide an optimized, secure alternative for: ${val}`)
             ]);
 
-            // Surgical Synthesis
             const final = await callInternalChat(`
                 Task: ${val}
                 A: ${a}
@@ -88,13 +98,13 @@
                 Compare these. Output ONLY a surgical SEARCH/REPLACE block.
             `);
 
-            document.getElementById('status').style.display = 'none';
+            status.style.display = 'none';
             append(final, 'ai', true);
         } else {
             const r = await callInternalChat(val);
             append(r, 'ai');
         }
-        document.getElementById('sendBtn').disabled = false;
+        sendBtn.disabled = false;
     }
 
     document.getElementById('sendBtn').addEventListener('click', handle);
