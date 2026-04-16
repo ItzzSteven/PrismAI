@@ -8,7 +8,8 @@
         :root { --bg: #0d1117; --chat-bg: #161b22; --accent: #58a6ff; --text: #c9d1d9; --code-bg: #000; --user-msg: #238636; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
         header { padding: 15px 25px; border-bottom: 1px solid #30363d; background: var(--chat-bg); display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-weight: bold; color: var(--accent); letter-spacing: 1px; font-size: 1.2rem; }
+        .logo { font-weight: bold; color: var(--text); letter-spacing: 1px; font-size: 1.2rem; }
+        .version-tag { color: var(--accent); font-size: 0.75rem; font-weight: normal; text-transform: uppercase; letter-spacing: 0.5px; }
         #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
         .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 0.95rem; }
         .user { align-self: flex-end; background: var(--user-msg); color: white; border-bottom-right-radius: 2px; }
@@ -16,14 +17,15 @@
         pre { background: var(--code-bg); padding: 12px; border-radius: 6px; overflow-x: auto; border: 1px solid #30363d; font-family: monospace; font-size: 0.85rem; color: #e6edf3; }
         .input-area { padding: 20px; background: var(--chat-bg); border-top: 1px solid #30363d; display: flex; gap: 10px; }
         input { flex-grow: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; border-radius: 6px; outline: none; }
-        button { background: var(--accent); border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button { background: var(--accent); border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; color: #0d1117; }
         .loading { font-size: 0.8rem; color: var(--accent); display: none; margin-bottom: 5px; }
     </style>
 </head>
 <body>
 
 <header>
-    <div class="logo">PrismAI 4o Neon</div>
+    <div class="logo">PrismAI</div>
+    <div class="version-tag">PrismAI 4o Neon</div>
 </header>
 
 <div id="chat-window">
@@ -41,25 +43,15 @@
 <script>
     async function callInternalChat(prompt) {
         try {
-            // Note: Cloudflare Functions at /functions/chat.js map to /chat
             const resp = await fetch("/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ prompt: prompt })
             });
-            
             const data = await resp.json();
-
-            if (!resp.ok) {
-                return "PrismAI Error: " + (data.error || "Internal Server Error");
-            }
-
-            // Correct mapping for OpenRouter response
+            if (!resp.ok) return "PrismAI Error: " + (data.error || "Server issue");
             return data.choices[0].message.content;
-        } catch (e) { 
-            console.error(e);
-            return "Error: Connection failed. Check Console."; 
-        }
+        } catch (e) { return "PrismAI Error: Connection failed."; }
     }
 
     function append(text, role, isCode = false) {
@@ -73,40 +65,25 @@
     async function handle() {
         const input = document.getElementById('userInput');
         const val = input.value.trim();
-        const sendBtn = document.getElementById('sendBtn');
-        const status = document.getElementById('status');
-        
-        if(!val || sendBtn.disabled) return;
-
+        if(!val) return;
         append(val, 'user');
         input.value = '';
-        
         const isCode = /code|fix|debug|function|{/i.test(val);
-        sendBtn.disabled = true;
-
+        document.getElementById('sendBtn').disabled = true;
         if (isCode) {
-            status.style.display = 'block';
-            
-            // Triple-Prompt synthesis
+            document.getElementById('status').style.display = 'block';
             const [a, b] = await Promise.all([
                 callInternalChat(`Draft a solution for: ${val}`),
-                callInternalChat(`Critique the standard solution and provide a better one for: ${val}`)
+                callInternalChat(`Provide a robust alternative for: ${val}`)
             ]);
-
-            const final = await callInternalChat(`
-                Task: ${val}
-                Logic A: ${a}
-                Logic B: ${b}
-                Compare these and output ONLY a surgical SEARCH/REPLACE code snippet.
-            `);
-
-            status.style.display = 'none';
+            const final = await callInternalChat(`Task: ${val}\nA: ${a}\nB: ${b}\nCompare and give only a surgical SEARCH/REPLACE block.`);
+            document.getElementById('status').style.display = 'none';
             append(final, 'ai', true);
         } else {
             const r = await callInternalChat(val);
             append(r, 'ai');
         }
-        sendBtn.disabled = false;
+        document.getElementById('sendBtn').disabled = false;
     }
 
     document.getElementById('sendBtn').addEventListener('click', handle);
