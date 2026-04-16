@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrismAI</title>
+    <style>
+        :root { --bg: #0d1117; --chat-bg: #161b22; --accent: #58a6ff; --text: #c9d1d9; --code-bg: #000; --user-msg: #238636; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        header { padding: 15px 25px; border-bottom: 1px solid #30363d; background: var(--chat-bg); display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: bold; color: var(--accent); letter-spacing: 1px; font-size: 1.2rem; }
+        .status-dot { height: 8px; width: 8px; background: #3fb950; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth; }
+        .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 0.95rem; }
+        .user { align-self: flex-end; background: var(--user-msg); color: white; border-bottom-right-radius: 2px; }
+        .ai { align-self: flex-start; background: var(--chat-bg); border: 1px solid #30363d; border-bottom-left-radius: 2px; }
+        
+        .prism-meta { font-size: 0.75rem; color: #8b949e; margin-top: 10px; border-top: 1px solid #30363d; padding-top: 8px; display: block; }
+        pre { background: var(--code-bg); padding: 12px; border-radius: 6px; overflow-x: auto; border: 1px solid #30363d; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: #e6edf3; }
+        
+        .input-area { padding: 20px; background: var(--chat-bg); border-top: 1px solid #30363d; display: flex; gap: 10px; align-items: center; }
+        input { flex-grow: 1; background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; border-radius: 6px; outline: none; }
+        input:focus { border-color: var(--accent); }
+        button { background: var(--accent); border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; color: #0d1117; transition: opacity 0.2s; }
+        button:disabled { opacity: 0.5; cursor: wait; }
+
+        .loading-text { font-size: 0.8rem; color: var(--accent); margin-bottom: 5px; display: none; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">PRISM AI <span style="font-weight:normal; font-size:0.7rem; color:#8b949e;">// SURGICAL ENGINE</span></div>
+    <div><span class="status-dot"></span> <span id="model-name" style="font-size:0.8rem; color:#8b949e;">Llama 3.1 70B</span></div>
+</header>
+
+<div id="chat-window">
+    <div class="msg ai">
+        Hello. I am <strong>PrismAI</strong>. 
+        <br><br>
+        When you provide code or debugging tasks, I run <strong>Triple-Prompt Synthesis</strong>:
+        <ol style="font-size:0.85rem">
+            <li>Generate primary solution.</li>
+            <li>Generate optimized/contrarian solution.</li>
+            <li>Compare both for the absolute right logic.</li>
+        </ol>
+        I deliver <strong>surgical snippets</strong> (SEARCH/REPLACE) instead of full files.
+    </div>
+</div>
+
+<div class="input-area">
+    <div style="flex-grow: 1;">
+        <div id="status" class="loading-text">Prism is synthesizing three perspectives...</div>
+        <input type="text" id="userInput" placeholder="Paste code or ask a question..." autocomplete="off">
+    </div>
+    <button id="sendBtn">SEND</button>
+</div>
+
+<script>
+
+    const CONFIG = {
+        API_KEY: "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", // INSERT KEY HERE
+        MODEL: "meta-llama/llama-3.1-70b-instruct",
+        ENDPOINT: "https://openrouter.ai"
+    };
+
+    const chatWindow = document.getElementById('chat-window');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const statusText = document.getElementById('status');
+
+    async function callOpenRouter(prompt) {
+        try {
+            const response = await fetch(CONFIG.ENDPOINT, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${CONFIG.API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": window.location.href, 
+                    "X-Title": "PrismAI Surgical Chat"
+                },
+                body: JSON.stringify({
+                    model: CONFIG.MODEL,
+                    messages: [{ role: "user", content: prompt }]
+                })
+            });
+            const data = await response.json();
+            return data.choices[0].message.content;
+        } catch (e) {
+            return `Error: ${e.message}`;
+        }
+    }
+
+    function appendMessage(content, role, isSurgical = false) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `msg ${role}`;
+        
+        if (isSurgical) {
+            msgDiv.innerHTML = `
+                <div>I've verified the logic across multiple prompts. Here is the surgical fix:</div>
+                <div class="prism-meta">
+                    <pre>${content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>
+                </div>
+            `;
+        } else {
+            msgDiv.innerText = content;
+        }
+        
+        chatWindow.appendChild(msgDiv);
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    async function handleSend() {
+        const text = userInput.value.trim();
+        if (!text || sendBtn.disabled) return;
+
+        // 1. Show user message
+        appendMessage(text, 'user');
+        userInput.value = '';
+        
+
+        const isCodeTask = /code|debug|function|fix|error|rewrite|script|snippet|const|def|public|class|{/i.test(text);
+
+        sendBtn.disabled = true;
+        
+        if (isCodeTask) {
+            statusText.style.display = 'block';
+            
+
+            const [p1, p2] = await Promise.all([
+                callOpenRouter(`Generate a direct solution for: ${text}`),
+                callOpenRouter(`Generate a highly robust and optimized alternative for: ${text}`)
+            ]);
+
+
+            const comparisonPrompt = `
+                Task: ${text}
+                Solution A: ${p1}
+                Solution B: ${p2}
+                
+                Compare A and B. Identify the most correct/secure logic. 
+                Output ONLY a surgical "Search and Replace" block for the code change. 
+                Use this format:
+                <<<< SEARCH
+                [target code]
+                ====
+                [fixed code]
+                >>>> REPLACE
+            `;
+
+            const finalDecision = await callOpenRouter(comparisonPrompt);
+            statusText.style.display = 'none';
+            appendMessage(finalDecision, 'ai', true);
+        } else {
+
+            const reply = await callOpenRouter(text);
+            appendMessage(reply, 'ai');
+        }
+
+        sendBtn.disabled = false;
+    }
+
+    sendBtn.addEventListener('click', handleSend);
+    userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') handleSend(); });
+</script>
+
+</body>
+</html>
